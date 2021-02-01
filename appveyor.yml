@@ -15,6 +15,6 @@ build:
  verbosity: minimal
  parallel: true
 
-build_script:
- - ps: devenv /upgrade vs2010.vcxproj
- - ps: msbuild vs2010.vcxproj "/p:platform=$env:platform;configuration=$env:configuration"
+before_build :
+ - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\devenv.exe' /upgrade vs2010.sln"
+ - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\devenv.exe' /upgrade vs2010.vcxproj"
