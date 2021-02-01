@@ -1,0 +1,8 @@
+version numbering schema:
+M.N.P
+| | +-- patch: increased if only bug fixed were incorporated
+| +---- minor: increased if command-line syntax/semantic breaking changes were applied
++------ major: increased if elementary changes (from user's point of view) were made
+
+1.0.0 (2021-02-01)
+ - first release
