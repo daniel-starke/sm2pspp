@@ -47,4 +47,4 @@ Files
 License
 =======
 
-See [unlicense file](doc/UNLICENSE).  
+See [unlicense file](LICENSE).  
