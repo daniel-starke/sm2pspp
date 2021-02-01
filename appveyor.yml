@@ -16,5 +16,5 @@ build:
  parallel: true
 
 before_build :
- - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\devenv.exe' /upgrade vs2010.sln"
- - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\devenv.exe' /upgrade vs2010.vcxproj"
+ - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\devenv.exe" /upgrade vs2010.sln'
+ - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\devenv.exe" /upgrade vs2010.vcxproj'
