@@ -16,6 +16,5 @@ build:
  parallel: true
 
 build_script:
- - ps: >-
-   devenv /upgrade vs2010.vcxproj
-   msbuild vs2010.vcxproj "/p:platform=$env:platform;configuration=$env:configuration"
+ - ps: devenv /upgrade vs2010.vcxproj
+ - ps: msbuild vs2010.vcxproj "/p:platform=$env:platform;configuration=$env:configuration"
