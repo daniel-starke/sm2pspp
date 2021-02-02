@@ -28,8 +28,8 @@ Building the program:
 
     make
 
-[![Linux GCC Build Status](https://img.shields.io/travis/daniel-starke/sm2pspp/master.svg?label=Linux)](https://travis-ci.org/daniel-starke/sm2pspp)
-[![Windows Visual Studio Build Status](https://img.shields.io/appveyor/ci/danielstarke/sm2pspp/master.svg?label=Windows)](https://ci.appveyor.com/project/danielstarke/sm2pspp)    
+[![Linux GCC Build Status](https://img.shields.io/travis/daniel-starke/sm2pspp/main.svg?label=Linux)](https://travis-ci.org/daniel-starke/sm2pspp)
+[![Windows Visual Studio Build Status](https://img.shields.io/appveyor/ci/danielstarke/sm2pspp/main.svg?label=Windows)](https://ci.appveyor.com/project/danielstarke/sm2pspp)    
 
 Files
 =====
