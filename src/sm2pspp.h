@@ -2,7 +2,7 @@
  * @file sm2pspp.h
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2021-02-01
+ * @version 2021-02-12
  * 
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -33,6 +33,10 @@
 
 /** Input line buffer size. */
 #define LINE_BUFFER_SIZE 0x80000
+
+
+/** The original thumbnail is removed if this macro is defined. */
+#define FEATURE_REMOVE_ORIG_THUMBNAIL 1
 
 
 /** Enumeration of possible error values. */

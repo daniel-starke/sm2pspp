@@ -2,7 +2,7 @@
  * @file version.h
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2021-02-01
+ * @version 2021-02-12
  * 
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -18,5 +18,5 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#define PROGRAM_VERSION 1,0,0,0
-#define PROGRAM_VERSION_STR "1.0.0 2021-02-01"
+#define PROGRAM_VERSION 1,1,0,0
+#define PROGRAM_VERSION_STR "1.1.0 2021-02-12"

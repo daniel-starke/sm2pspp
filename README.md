@@ -23,7 +23,10 @@ Building
 The following dependencies are given:  
 - C99
 
-Edit Makefile to match your target system configuration.  
+Edit Makefile to match your target system configuration.
+
+_Hint: You may want to link with `-mwindows` for Windows targets to suppress the console window to be shown._
+
 Building the program:  
 
     make

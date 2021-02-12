@@ -2,7 +2,7 @@
  * @file sm2pspp.c
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2021-02-01
+ * @version 2021-02-12
  * 
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -80,7 +80,7 @@ int _tmain(int argc, TCHAR ** argv) {
  * Write the help for this application to standard out.
  */
 void printHelp(void) {
-	_tprintf(
+	_ftprintf(ferr,
 	_T("sm2pspp <g-code file>\n")
 	_T("\n")
 	_T("sm2pspp ") _T2(PROGRAM_VERSION_STR) _T("\n")
@@ -205,6 +205,10 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	char * inputBuf = NULL;
 	size_t inputLen = 0;
 	FILE * fp = NULL;
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+	size_t origThumbnailLines = 0;
+	tPToken origThumbnail = {0};
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 	tPToken filamentUsed = {0};
 	tPToken layerHeight = {0};
 	tPToken estTime = {0};
@@ -221,6 +225,9 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		ST_COMMENT,
 		ST_PARAMETER_VALUE,
 		ST_THUMBNAIL
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+		, ST_THUMBNAIL_TAIL
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 	} state = ST_LINE_START;
 #ifdef DEBUG
 	static const TCHAR * stateStr[] = {
@@ -229,6 +236,9 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		_T("ST_COMMENT"),
 		_T("ST_PARAMETER_VALUE"),
 		_T("ST_THUMBNAIL")
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+		, _T("ST_THUMBNAIL_TAIL")
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 	};
 #endif /* DEBUG */
 	
@@ -244,6 +254,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	
 	/* allocate input buffer from file data */
 	inputBuf = (char *)malloc(inputLen);
+	if (inputBuf == NULL) ON_ERROR(MSGT_ERR_NO_MEM);
 	if (fread(inputBuf, inputLen, 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_READ);
 	
 	/* close input file */
@@ -298,12 +309,19 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				if (isspace(ch) == 0) {
 					/* start of first word in comment */
 					aToken.start = it;
+					aToken.length = 1;
 				}
 			} else if (ch == ' ' && aToken.length > 0) {
 				if (p_cmpToken(&aToken, "post-processed by sm2pspp") == 0) {
 					/* already post-processed file */
 					goto onSuccess;
 				} else if (p_cmpToken(&aToken, "thumbnail begin") == 0) {
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+					if (origThumbnail.start == NULL) {
+						origThumbnail.start = lineStart;
+						origThumbnailLines = 1;
+					}
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 					memset(&aToken, 0, sizeof(aToken));
 					state = (thumbnail.start == NULL) ? ST_THUMBNAIL : ST_FIND_LINE_START;
 				}
@@ -359,10 +377,16 @@ int processFile(const TCHAR * file, const tCallback cb) {
 			}
 			break;
 		case ST_THUMBNAIL:
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+			if (ch == '\n') {
+				/* count thumbnail lines to compensate cut */
+				origThumbnailLines++;
+			}
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 			if (thumbnail.start == NULL) {
 				if (ch == '\n') {
 					/* start of thumbnail data */
-					thumbnail.start = it;
+					thumbnail.start = it + 1;
 				}
 			} else if (ch == ';') {
 				/* start of comment */
@@ -372,17 +396,31 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				if (isspace(aToken.start[0]) != 0) {
 					/* ignore leading spaces */
 					aToken.start = it;
-					aToken.length = 0;
+					aToken.length = 1;
 				} else {
 					aToken.length++;
 					if (p_cmpToken(&aToken, "thumbnail end") == 0) {
 						/* got complete Base64 encoded thumbnail image data (PNG) */
 						thumbnail.length = (size_t)(lineStart - thumbnail.start);
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+						origThumbnail.length = (size_t)(it - origThumbnail.start);
+						state = ST_THUMBNAIL_TAIL;
+#else /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
 						state = ST_FIND_LINE_START;
+#endif /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
 					}
 				}
 			}
 			break;
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+		case ST_THUMBNAIL_TAIL:
+			if (ch == '\n') {
+				/* new line */
+				origThumbnail.length = (size_t)(it + 1 - origThumbnail.start);
+				state = ST_LINE_START;
+			}
+			break;
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 		}
 		if (ch == '\n') {
 			lineNr++;
@@ -432,7 +470,11 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		}
 		fprintf(fp, "\n");
 	}
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 25 - origThumbnailLines));
+#else /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
 	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 25));
+#endif /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
 	fprintf(fp, ";estimated_time(s): %.0f\n", (float)p_dtms(&estTime));
 	fprintf(fp, ";nozzle_temperature(°C): %.0f\n", p_float(&nozzleTemp));
 	fprintf(fp, ";build_plate_temperature(°C): %.0f\n", p_float(&plateTemp));
@@ -447,7 +489,17 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	if (ferror(fp) != 0) ON_ERROR(MSGT_ERR_FILE_WRITE);
 	
 	/* output remaining file */
-	if (fwrite(inputBuf, inputLen, 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_WRITE);
+#ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
+	if (origThumbnail.start != NULL && origThumbnail.length != 0) {
+		/* cut out original thumbnail */
+		const char * thumbnailEndIt = origThumbnail.start + origThumbnail.length;
+		if (fwrite(inputBuf, (size_t)(origThumbnail.start - inputBuf), 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_WRITE);
+		if (fwrite(thumbnailEndIt, (size_t)(inputLen - (thumbnailEndIt - inputBuf)), 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_WRITE);
+	} else
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
+	{
+		if (fwrite(inputBuf, inputLen, 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_WRITE);
+	}
 onSuccess:
 	res = 1;
 onError:

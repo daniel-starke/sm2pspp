@@ -116,7 +116,7 @@ extern __attribute__((__dllimport__)) FILE * _fopen(const char *, const char *);
 extern __attribute__((__dllimport__)) FILE * _wfopen(const wchar_t *, const wchar_t *);
 #endif
 # ifdef UNICODE
-#  if !defined(_O_U16TEXT) && ! defined(__MINGW64__)
+#  if !defined(_O_U16TEXT) && !defined(__MINGW64__)
 #   define _O_U16TEXT 0x20000
 #   ifndef _O_U8TEXT
 #    define _O_U8TEXT 0x40000
