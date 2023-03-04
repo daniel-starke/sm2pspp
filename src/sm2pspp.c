@@ -2,7 +2,7 @@
  * @file sm2pspp.c
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2023-03-04
+ * @version 2023-03-05
  *
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -414,8 +414,8 @@ int processFile(const TCHAR * file, const tCallback cb) {
 					break;
 				}
 				param = P_UNKNOWN;
-				if (ch == '\n') {
-					/* new line */
+				if (ch == '\n' || ch == ';') {
+					/* new line or start of comment */
 					switch (code) {
 					case GCODE('G', 0): /* linear move */
 					case GCODE('G', 1): /* linear move */
@@ -508,7 +508,14 @@ int processFile(const TCHAR * file, const tCallback cb) {
 					default:
 						break;
 					}
-					state = ST_LINE_START;
+					if (ch == '\n') {
+						/* new line */
+						state = ST_LINE_START;
+					} else {
+						/* comment */
+						memset(&aToken, 0, sizeof(aToken));
+						state = ST_COMMENT;
+					}
 				}
 			}
 			break;

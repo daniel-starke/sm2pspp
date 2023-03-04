@@ -4,6 +4,9 @@ M.N.P
 | +---- minor: increased if command-line syntax/semantic breaking changes were applied
 +------ major: increased if elementary changes (from user's point of view) were made
 
+1.2.1 (2023-03-05)
+ - fixed: missing handling of comment after Gcode
+
 1.2.0 (2023-03-04)
  - added: output of print dimensions calculated from Gcode
  - fixed: file_total_lines off by one if no thumbnail data was found
