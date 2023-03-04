@@ -1,5 +1,0 @@
-language: c
-compiler: gcc
-os: linux
-script:
- - make all

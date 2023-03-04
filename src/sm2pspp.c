@@ -2,8 +2,8 @@
  * @file sm2pspp.c
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2021-02-12
- * 
+ * @version 2023-03-04
+ *
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
  * All contributions are also assumed to be in the Public Domain.
@@ -52,7 +52,7 @@ int _tmain(int argc, TCHAR ** argv) {
 	fin  = stdin;
 	fout = stdout;
 	ferr = stderr;
-	
+
 #ifdef UNICODE
 	/* http://msdn.microsoft.com/en-us/library/z0kc8e3z(v=vs.80).aspx */
 	if (_isatty(_fileno(fout))) {
@@ -71,7 +71,7 @@ int _tmain(int argc, TCHAR ** argv) {
 		printHelp();
 		return EXIT_FAILURE;
 	}
-	
+
 	return (processFile(argv[1], &errorCallback) == 1) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -91,7 +91,7 @@ void printHelp(void) {
 
 /**
  * Helper function to compare the start of a token against a given string.
- * 
+ *
  * @param[in] lhs - token to compare with
  * @param[in] rhs - string to compare with
  * @return same as strcmp
@@ -107,7 +107,7 @@ static int p_cmpTokenStart(const tPToken * lhs, const char * rhs) {
 
 /**
  * Parses the given dhms time token and returns the value in seconds.
- * 
+ *
  * @param[in] aToken - input token
  * @return time in seconds
  */
@@ -147,8 +147,32 @@ static size_t p_dtms(const tPToken * aToken) {
 
 
 /**
+ * Converts the given token into a unsigned integer value.
+ *
+ * @param[in] aToken - token to convert
+ * @return integer value from the token
+ */
+static unsigned int p_uint(const tPToken * aToken) {
+	if (aToken->start == NULL || aToken->length <= 0) return 0;
+	unsigned int val = 0;
+	for (size_t i = 0; i < aToken->length; i++) {
+		const char ch = aToken->start[i];
+		switch (ch) {
+		case '0': case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8': case '9':
+			val = (val * 10) + ((unsigned int)(ch - '0'));
+			break;
+		default:
+			break;
+		}
+	}
+	return val;
+}
+
+
+/**
  * Converts the given token into a float value. Simple float values are assumed.
- * 
+ *
  * @param[in] aToken - token to convert
  * @return float value from the token
  */
@@ -158,7 +182,13 @@ static float p_float(const tPToken * aToken) {
 	size_t frac = 0;
 	float fracDiv = 1.0f;
 	int isFrac = 0;
-	for (size_t i = 0; i < aToken->length; i++) {
+	size_t i = 0;
+	int sign = 1;
+	if (aToken->start[0] == '-') {
+		sign = -1;
+		i++;
+	}
+	for (; i < aToken->length; i++) {
 		const char ch = aToken->start[i];
 		switch (ch) {
 		case '0': case '1': case '2': case '3': case '4':
@@ -177,14 +207,14 @@ static float p_float(const tPToken * aToken) {
 			break;
 		}
 	}
-	return (float)val + ((float)frac / fracDiv);
+	return (float)sign * ((float)val + ((float)frac / fracDiv));
 }
 
 
 /**
  * Processes the given PrusaSlicer generated G-Code file and converts
  * it into a Snapmaker 2.0 terminal compatible G-Code file.
- * 
+ *
  * @param[in] file - PrusaSlicer generated G-Code file
  * @param[in] cb - error output callback function
  * @return 1 on success, 0 on failure, -1 if aborted by callback function
@@ -198,9 +228,29 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	cb(msg, file, lineNr); \
 	goto onError; \
 } while (0)
+#define GCODE(type, num) (((unsigned int)(type) << 16) | (unsigned int)(num))
+#define IS_SET(num) ((num) == (num))
 
 	if (file == NULL || cb == NULL) return 0;
 	int res = 0;
+	int prevExt = 0;
+	int isAbsPos = 1;
+	int hasLayerChange = 0;
+	int hasThumbnail = 0;
+	unsigned int code = -1;
+	float paramX = NAN;
+	float paramY = NAN;
+	float paramZ = NAN;
+	float paramE = NAN;
+	float x = NAN;
+	float y = NAN;
+	float z = NAN;
+	float minX = +INFINITY;
+	float minY = +INFINITY;
+	float minZ = +INFINITY;
+	float maxX = -INFINITY;
+	float maxY = -INFINITY;
+	float maxZ = -INFINITY;
 	size_t lineNr = 1;
 	char * inputBuf = NULL;
 	size_t inputLen = 0;
@@ -210,6 +260,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	tPToken origThumbnail = {0};
 #endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 	tPToken filamentUsed = {0};
+	tPToken firstLayerHeight = {0};
 	tPToken layerHeight = {0};
 	tPToken estTime = {0};
 	tPToken nozzleTemp = {0};
@@ -222,6 +273,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	enum tState {
 		ST_LINE_START,
 		ST_FIND_LINE_START,
+		ST_GCODE,
 		ST_COMMENT,
 		ST_PARAMETER_VALUE,
 		ST_THUMBNAIL
@@ -233,6 +285,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	static const TCHAR * stateStr[] = {
 		_T("ST_LINE_START"),
 		_T("ST_FIND_LINE_START"),
+		_T("ST_GCODE"),
 		_T("ST_COMMENT"),
 		_T("ST_PARAMETER_VALUE"),
 		_T("ST_THUMBNAIL")
@@ -241,26 +294,34 @@ int processFile(const TCHAR * file, const tCallback cb) {
 #endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 	};
 #endif /* DEBUG */
-	
+	enum tParam {
+		P_G,
+		P_X,
+		P_Y,
+		P_Z,
+		P_E,
+		P_UNKNOWN
+	} param = P_UNKNOWN;
+
 	/* open input file for reading */
 	fp = _tfopen(file, _T("rb"));
 	if (fp == NULL) ON_ERROR(MSGT_ERR_FILE_OPEN);
-	
+
 	/* get file size */
 	fseeko64(fp, 0, SEEK_END);
 	inputLen = (size_t)ftello64(fp);
 	if (inputLen < 1) goto onSuccess;
 	fseek(fp, 0, SEEK_SET);
-	
+
 	/* allocate input buffer from file data */
 	inputBuf = (char *)malloc(inputLen);
 	if (inputBuf == NULL) ON_ERROR(MSGT_ERR_NO_MEM);
 	if (fread(inputBuf, inputLen, 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_READ);
-	
+
 	/* close input file */
 	fclose(fp);
 	fp = NULL;
-	
+
 	/* parse tokens */
 	lineStart = inputBuf;
 	for (const char * it = inputBuf, * endIt = inputBuf + inputLen; it < endIt; it++) {
@@ -289,6 +350,16 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				/* comment */
 				memset(&aToken, 0, sizeof(aToken));
 				state = ST_COMMENT;
+			} else if (ch == 'G') {
+				/* Gcode */
+				param = P_G;
+				paramX = NAN;
+				paramY = NAN;
+				paramZ = NAN;
+				paramE = NAN;
+				aToken.start = it + 1;
+				aToken.length = 0;
+				state = ST_GCODE;
 			} else if (isspace(ch) == 0) {
 				/* code */
 				state = ST_FIND_LINE_START;
@@ -301,10 +372,160 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				state = ST_LINE_START;
 			}
 			break;
+		case ST_GCODE:
+			if (isdigit(ch) != 0 || (param != P_G && (ch == '.' || (aToken.length == 0 && ch == '-')))) {
+				/* number */
+				aToken.length++;
+			} else if (ch == 'X') {
+				param = P_X;
+				aToken.start = it + 1;
+				aToken.length = 0;
+			} else if (ch == 'Y') {
+				param = P_Y;
+				aToken.start = it + 1;
+				aToken.length = 0;
+			} else if (ch == 'Z') {
+				param = P_Z;
+				aToken.start = it + 1;
+				aToken.length = 0;
+			} else if (ch == 'E') {
+				param = P_E;
+				aToken.start = it + 1;
+				aToken.length = 0;
+			} else {
+				/* end of token */
+				switch (param) {
+				case P_G:
+					code = GCODE('G', p_uint(&aToken));
+					break;
+				case P_X:
+					paramX = p_float(&aToken);
+					break;
+				case P_Y:
+					paramY = p_float(&aToken);
+					break;
+				case P_Z:
+					paramZ = p_float(&aToken);
+					break;
+				case P_E:
+					paramE = p_float(&aToken);
+					break;
+				case P_UNKNOWN:
+					break;
+				}
+				param = P_UNKNOWN;
+				if (ch == '\n') {
+					/* new line */
+					switch (code) {
+					case GCODE('G', 0): /* linear move */
+					case GCODE('G', 1): /* linear move */
+						if (IS_SET(paramE) && paramE > 0.0f && prevExt == 0) {
+							/* extrusion move after non-extrusion move */
+							if ( IS_SET(x) ) {
+								if (minX > x) {
+									minX = x;
+								}
+								if (maxX < x) {
+									maxX = x;
+								}
+							}
+							if ( IS_SET(y) ) {
+								if (minY > y) {
+									minY = y;
+								}
+								if (maxY < y) {
+									maxY = y;
+								}
+							}
+							if ( IS_SET(z) ) {
+								if (minZ > z) {
+									minZ = z;
+								}
+								if (maxZ < z) {
+									maxZ = z;
+								}
+							}
+						}
+						/* calculate new position */
+						if ( IS_SET(paramX) ) {
+							if (isAbsPos != 0) {
+								x = paramX;
+							} else {
+								x += paramX;
+							}
+						}
+						if ( IS_SET(paramY) ) {
+							if (isAbsPos != 0) {
+								y = paramY;
+							} else {
+								y += paramY;
+							}
+						}
+						if ( IS_SET(paramZ) ) {
+							if (isAbsPos != 0) {
+								z = paramZ;
+							} else {
+								z += paramZ;
+							}
+						}
+						if (IS_SET(paramE) && paramE > 0.0f) {
+							/* extrusion move */
+							if ( IS_SET(paramX) ) {
+								if (minX > x) {
+									minX = x;
+								}
+								if (maxX < x) {
+									maxX = x;
+								}
+							}
+							if ( IS_SET(paramY) ) {
+								if (minY > y) {
+									minY = y;
+								}
+								if (maxY < y) {
+									maxY = y;
+								}
+							}
+							if ( IS_SET(paramZ) ) {
+								if (minZ > z) {
+									minZ = z;
+								}
+								if (maxZ < z) {
+									maxZ = z;
+								}
+							}
+							prevExt = 1;
+						} else {
+							prevExt = 0;
+						}
+						break;
+					case GCODE('G', 90): /* absolute positioning */
+						isAbsPos = 1;
+						break;
+					case GCODE('G', 91): /* relative positioning */
+						isAbsPos = 0;
+						break;
+					default:
+						break;
+					}
+					state = ST_LINE_START;
+				}
+			}
+			break;
 		case ST_COMMENT:
 			if (ch == '\n') {
 				/* end of comment line */
 				state = ST_LINE_START;
+				if (p_cmpToken(&aToken, "LAYER_CHANGE") == 0 && hasLayerChange == 0) {
+					/* start of first layer -> reset dimensions */
+					hasLayerChange = 1;
+					minX = +INFINITY;
+					minY = +INFINITY;
+					minZ = +INFINITY;
+					maxX = -INFINITY;
+					maxY = -INFINITY;
+					maxZ = -INFINITY;
+				}
 			} else if (aToken.start == NULL) {
 				if (isspace(ch) == 0) {
 					/* start of first word in comment */
@@ -332,6 +553,8 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				}
 				if (p_cmpToken(&aToken, "filament used [mm]") == 0) {
 					valueToken = &filamentUsed;
+				} else if (p_cmpToken(&aToken, "first_layer_height") == 0) {
+					valueToken = &firstLayerHeight;
 				} else if (p_cmpToken(&aToken, "layer_height") == 0) {
 					valueToken = &layerHeight;
 				} else if (p_cmpTokenStart(&aToken, "estimated printing time") == 0) {
@@ -379,7 +602,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		case ST_THUMBNAIL:
 #ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
 			if (ch == '\n') {
-				/* count thumbnail lines to compensate cut */
+				/* count thumbnail lines to compensate original thumbnail removal */
 				origThumbnailLines++;
 			}
 #endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
@@ -429,7 +652,12 @@ int processFile(const TCHAR * file, const tCallback cb) {
 			lineStart = it + 1;
 		}
 	}
-	
+
+	/* correct minZ accordingly */
+	if (firstLayerHeight.start != NULL && firstLayerHeight.length > 0 && minZ < maxZ) {
+		minZ -= p_float(&firstLayerHeight);
+	}
+
 	/* check missing tokens */
 	if (filamentUsed.start == NULL || filamentUsed.length == 0) ON_WARN(MSGT_WARN_NO_FILAMENT_USED);
 	if (layerHeight.start == NULL || layerHeight.length == 0) ON_WARN(MSGT_WARN_NO_LAYER_HEIGHT);
@@ -438,12 +666,12 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	if (plateTemp.start == NULL || plateTemp.length == 0) ON_WARN(MSGT_WARN_NO_PLATE_TEMP);
 	if (printSpeed.start == NULL || printSpeed.length == 0) ON_WARN(MSGT_WARN_NO_PRINT_SPEED);
 	if (thumbnail.start == NULL || thumbnail.length == 0) ON_WARN(MSGT_WARN_NO_THUMBNAIL);
-	
+
 	/* re-create file */
 	fp = _tfopen(file, _T("wb"));
 	if (fp == NULL) ON_ERROR(MSGT_ERR_FILE_CREATE);
-	
-	/* output Snapmaker 2.0 specific start header */
+
+	/* output Snapmaker 2.0 specific header */
 	clearerr(fp);
 	fprintf(fp, ";post-processed by sm2pspp (https://github.com/daniel-starke/sm2pspp)\n");
 	fprintf(fp, ";Header Start\n\n");
@@ -454,6 +682,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	fprintf(fp, ";header_type: 3dp\n");
 	if (thumbnail.start != NULL || thumbnail.length > 0) {
 		/* output thumbnail */
+		hasThumbnail = 1;
 		fprintf(fp, ";thumbnail: data:image/png;base64,");
 		memset(&aToken, 0, sizeof(aToken));
 		for (size_t i = 0; i < thumbnail.length; i++) {
@@ -471,27 +700,27 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		fprintf(fp, "\n");
 	}
 #ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
-	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 25 - origThumbnailLines));
+	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 24 + hasThumbnail - origThumbnailLines));
 #else /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
-	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 25));
+	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 24 + hasThumbnail));
 #endif /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
 	fprintf(fp, ";estimated_time(s): %.0f\n", (float)p_dtms(&estTime));
 	fprintf(fp, ";nozzle_temperature(°C): %.0f\n", p_float(&nozzleTemp));
 	fprintf(fp, ";build_plate_temperature(°C): %.0f\n", p_float(&plateTemp));
 	fprintf(fp, ";work_speed(mm/minute): %.0f\n", p_float(&printSpeed) * 60.0f);
-	fprintf(fp, ";max_x(mm): 0\n"); /* not set by Snapmaker Luban */
-	fprintf(fp, ";max_y(mm): 0\n"); /* not set by Snapmaker Luban */
-	fprintf(fp, ";max_z(mm): 0\n"); /* not set by Snapmaker Luban */
-	fprintf(fp, ";min_x(mm): 0\n"); /* not set by Snapmaker Luban */
-	fprintf(fp, ";min_y(mm): 0\n"); /* not set by Snapmaker Luban */
-	fprintf(fp, ";min_z(mm): 0\n\n"); /* not set by Snapmaker Luban */
+	fprintf(fp, ";max_x(mm): %.2f\n", maxX);
+	fprintf(fp, ";max_y(mm): %.2f\n", maxY);
+	fprintf(fp, ";max_z(mm): %.2f\n", maxZ);
+	fprintf(fp, ";min_x(mm): %.2f\n", minX);
+	fprintf(fp, ";min_y(mm): %.2f\n", minY);
+	fprintf(fp, ";min_z(mm): %.2f\n\n", minZ);
 	fprintf(fp, ";Header End\n\n", p_float(&printSpeed) * 60.0f);
 	if (ferror(fp) != 0) ON_ERROR(MSGT_ERR_FILE_WRITE);
-	
+
 	/* output remaining file */
 #ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
 	if (origThumbnail.start != NULL && origThumbnail.length != 0) {
-		/* cut out original thumbnail */
+		/* remove original thumbnail */
 		const char * thumbnailEndIt = origThumbnail.start + origThumbnail.length;
 		if (fwrite(inputBuf, (size_t)(origThumbnail.start - inputBuf), 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_WRITE);
 		if (fwrite(thumbnailEndIt, (size_t)(inputLen - (thumbnailEndIt - inputBuf)), 1, fp) < 1) ON_ERROR(MSGT_ERR_FILE_WRITE);
@@ -506,7 +735,7 @@ onError:
 	if (fp != NULL) fclose(fp);
 	if (inputBuf != NULL) free(inputBuf);
 	return res;
-	
+
 #undef ON_WARN
 #undef ON_ERROR
 }
@@ -514,7 +743,7 @@ onError:
 
 /**
  * Error output callback for processFile().
- * 
+ *
  * @param[in] msg - error message ID
  * @param[in] file - input file path
  * @param[in] line - input file path line number (0 if not applicable)

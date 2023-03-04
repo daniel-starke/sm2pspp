@@ -1,4 +1,4 @@
-version: 1.1.0.{build}
+version: 1.2.0.{build}
 
 configuration:
  - Release
@@ -8,7 +8,7 @@ platform:
  - x64
 
 image:
- - Visual Studio 2019
+ - Visual Studio 2022
 
 build:
  project: vs2010.sln
@@ -16,5 +16,5 @@ build:
  parallel: true
 
 before_build :
- - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\devenv.exe" /upgrade vs2010.sln'
- - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\devenv.exe" /upgrade vs2010.vcxproj'
+ - cmd: '"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\devenv.exe" /upgrade vs2010.sln'
+ - cmd: '"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\devenv.exe" /upgrade vs2010.vcxproj'

@@ -2,8 +2,8 @@
  * @file sm2pspp.h
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2021-02-12
- * 
+ * @version 2023-03-04
+ *
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
  * All contributions are also assumed to be in the Public Domain.
@@ -22,6 +22,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

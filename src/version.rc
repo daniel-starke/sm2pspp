@@ -2,7 +2,7 @@
  * @file version.rc
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2021-01-30
+ * @version 2023-03-04
  * 
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -41,7 +41,7 @@ BEGIN
 			VALUE "FileDescription", "Snapmaker 2.0 PrusaSlicer Post-Processor"
 			VALUE "FileVersion", PROGRAM_VERSION_STR
 			VALUE "InternalName", "sm2pspp"
-			VALUE "LegalCopyright", "Copyright (C) 2021"
+			VALUE "LegalCopyright", "Copyright (C) 2021-2023"
 			VALUE "OriginalFilename", "sm2pspp.exe"
 			VALUE "ProductName", "Snapmaker 2.0 PrusaSlicer Post-Processor"
 			VALUE "ProductVersion", PROGRAM_VERSION_STR

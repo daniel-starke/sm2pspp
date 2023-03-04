@@ -1,6 +1,6 @@
 WINDRES = $(PREFIX)windres
 CWFLAGS = -Wall -Wextra -Wformat -pedantic -Wshadow -Wno-format -std=c99
-CFLAGS = -O2 -DNDEBUG -mtune=core2 -march=core2 -mstackrealign -flto -ffat-lto-objects -fomit-frame-pointer -fno-ident -fgraphite -municode
+CFLAGS = -O2 -DNDEBUG -mtune=core2 -march=core2 -mstackrealign -flto -ffat-lto-objects -fomit-frame-pointer -fno-ident -fgraphite -municode -D__USE_MINGW_ANSI_STDIO=0
 LDFLAGS = -s -static -fno-ident -municode
 #CFLAGS = -Og -g3 -ggdb -gdwarf-3 -fno-omit-frame-pointer -fvar-tracking-assignments -fbounds-check -fstack-protector-strong -fno-ident
 #LDFLAGS = -fno-ident -static
