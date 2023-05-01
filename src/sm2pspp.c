@@ -2,7 +2,7 @@
  * @file sm2pspp.c
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2023-03-05
+ * @version 2023-05-01
  *
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -163,9 +163,10 @@ static unsigned int p_uint(const tPToken * aToken) {
 			val = (val * 10) + ((unsigned int)(ch - '0'));
 			break;
 		default:
-			break;
+			goto endOfNumber;
 		}
 	}
+endOfNumber:
 	return val;
 }
 
@@ -204,9 +205,10 @@ static float p_float(const tPToken * aToken) {
 			isFrac = 1;
 			break;
 		default:
-			break;
+			goto endOfNumber;
 		}
 	}
+endOfNumber:
 	return (float)sign * ((float)val + ((float)frac / fracDiv));
 }
 
@@ -263,7 +265,8 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	tPToken firstLayerHeight = {0};
 	tPToken layerHeight = {0};
 	tPToken estTime = {0};
-	tPToken nozzleTemp = {0};
+	tPToken nozzleTemp0 = {0};
+	tPToken nozzleTemp1 = {0};
 	tPToken plateTemp = {0};
 	tPToken printSpeed = {0};
 	tPToken thumbnail = {0};
@@ -567,7 +570,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				} else if (p_cmpTokenStart(&aToken, "estimated printing time") == 0) {
 					valueToken = &estTime;
 				} else if (p_cmpToken(&aToken, "first_layer_temperature") == 0) {
-					valueToken = &nozzleTemp;
+					valueToken = &nozzleTemp0;
 				} else if (p_cmpToken(&aToken, "first_layer_bed_temperature") == 0) {
 					valueToken = &plateTemp;
 				} else if (p_cmpToken(&aToken, "max_print_speed") == 0) {
@@ -601,6 +604,11 @@ int processFile(const TCHAR * file, const tCallback cb) {
 					valueToken->start = it;
 					valueToken->length = 1;
 				}
+			} else if (ch == ',' && valueToken == &nozzleTemp0) {
+				/* end of first extruder nozzle temperature value */
+				valueToken->length = (size_t)(it - valueToken->start + 1);
+				/* prepare next */
+				valueToken = &nozzleTemp1;
 			} else if (isspace(ch) == 0) {
 				/* ignore trailing spaces */
 				valueToken->length = (size_t)(it - valueToken->start + 1);
@@ -669,7 +677,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	if (filamentUsed.start == NULL || filamentUsed.length == 0) ON_WARN(MSGT_WARN_NO_FILAMENT_USED);
 	if (layerHeight.start == NULL || layerHeight.length == 0) ON_WARN(MSGT_WARN_NO_LAYER_HEIGHT);
 	if (estTime.start == NULL || estTime.length == 0) ON_WARN(MSGT_WARN_NO_EST_TIME);
-	if (nozzleTemp.start == NULL || nozzleTemp.length == 0) ON_WARN(MSGT_WARN_NO_NOZZLE_TEMP);
+	if (nozzleTemp0.start == NULL || nozzleTemp0.length == 0) ON_WARN(MSGT_WARN_NO_NOZZLE_TEMP);
 	if (plateTemp.start == NULL || plateTemp.length == 0) ON_WARN(MSGT_WARN_NO_PLATE_TEMP);
 	if (printSpeed.start == NULL || printSpeed.length == 0) ON_WARN(MSGT_WARN_NO_PRINT_SPEED);
 	if (thumbnail.start == NULL || thumbnail.length == 0) ON_WARN(MSGT_WARN_NO_THUMBNAIL);
@@ -680,7 +688,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 
 	/* output Snapmaker 2.0 specific header */
 	clearerr(fp);
-	fprintf(fp, ";post-processed by sm2pspp (https://github.com/daniel-starke/sm2pspp)\n");
+	fprintf(fp, ";post-processed by sm2pspp " PROGRAM_VERSION_STR " (https://github.com/daniel-starke/sm2pspp)\n");
 	fprintf(fp, ";Header Start\n\n");
 	fprintf(fp, ";FLAVOR:Marlin\n");
 	fprintf(fp, ";TIME:6666\n\n\n");
@@ -706,13 +714,23 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		}
 		fprintf(fp, "\n");
 	}
+	/* using dual extruder with a heated second nozzle? */
+	float nozzleTemp1Val = 0.0f;
+	if (nozzleTemp1.start != NULL && nozzleTemp1.length > 0) {
+		nozzleTemp1Val = p_float(&nozzleTemp1);
+		if (nozzleTemp1Val > 0.1f) {
+			lineNr++;
+		}
+	}
 #ifdef FEATURE_REMOVE_ORIG_THUMBNAIL
-	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 24 + hasThumbnail - origThumbnailLines));
-#else /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
+	lineNr = (size_t)(lineNr - origThumbnailLines);
+#endif /* FEATURE_REMOVE_ORIG_THUMBNAIL */
 	fprintf(fp, ";file_total_lines: %lu\n", (unsigned long)(lineNr + 24 + hasThumbnail));
-#endif /* !FEATURE_REMOVE_ORIG_THUMBNAIL */
 	fprintf(fp, ";estimated_time(s): %.0f\n", (float)p_dtms(&estTime));
-	fprintf(fp, ";nozzle_temperature(°C): %.0f\n", p_float(&nozzleTemp));
+	fprintf(fp, ";nozzle_temperature(°C): %.0f\n", p_float(&nozzleTemp0));
+	if (nozzleTemp1Val > 0.1f) {
+		fprintf(fp, ";nozzle_1_temperature(°C): %.0f\n", nozzleTemp1Val);
+	}
 	fprintf(fp, ";build_plate_temperature(°C): %.0f\n", p_float(&plateTemp));
 	fprintf(fp, ";work_speed(mm/minute): %.0f\n", p_float(&printSpeed) * 60.0f);
 	fprintf(fp, ";max_x(mm): %.2f\n", maxX);

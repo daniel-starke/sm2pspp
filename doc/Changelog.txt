@@ -4,6 +4,11 @@ M.N.P
 | +---- minor: increased if command-line syntax/semantic breaking changes were applied
 +------ major: increased if elementary changes (from user's point of view) were made
 
+1.3.0 (2023-05-01)
+ - added: dual extruder support (automatically detected from Gcode)
+ - added: version string to Gcode output
+ - fixed: number parser to honor separators in tokens
+
 1.2.1 (2023-03-05)
  - fixed: missing handling of comment after Gcode
 

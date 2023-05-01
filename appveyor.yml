@@ -1,4 +1,4 @@
-version: 1.2.0.{build}
+version: 1.3.0.{build}
 
 configuration:
  - Release
@@ -12,7 +12,7 @@ image:
 
 build:
  project: vs2010.sln
- verbosity: detailed
+ verbosity: minimal
  parallel: true
 
 before_build :
