@@ -2,7 +2,7 @@
  * @file sm2pspp.h
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2023-03-04
+ * @version 2023-05-04
  *
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -49,6 +49,7 @@ typedef enum {
 	MSGT_ERR_FILE_READ,
 	MSGT_ERR_FILE_CREATE,
 	MSGT_ERR_FILE_WRITE,
+	MSGT_ERR_NO_SET_NOZZLE_TEMP,
 	MSGT_WARN_NO_FILAMENT_USED,
 	MSGT_WARN_NO_LAYER_HEIGHT,
 	MSGT_WARN_NO_EST_TIME,
@@ -56,6 +57,7 @@ typedef enum {
 	MSGT_WARN_NO_PLATE_TEMP,
 	MSGT_WARN_NO_PRINT_SPEED,
 	MSGT_WARN_NO_THUMBNAIL,
+	MSGT_INFO_PRESS_ENTER,
 	MSG_COUNT
 } tMessage;
 
@@ -72,7 +74,7 @@ extern const TCHAR * fmsg[MSG_COUNT];
 
 /* helper functions */
 void printHelp(void);
-int processFile(const TCHAR * file, const tCallback cb);
+int processFile(const TCHAR * file, const int check, const tCallback cb);
 int errorCallback(const tMessage msg, const TCHAR * file, const size_t line);
 
 

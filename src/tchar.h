@@ -2,7 +2,7 @@
  * @file tchar.h
  * @author Daniel Starke
  * @date 2014-05-04
- * @version 2021-02-01
+ * @version 2023-05-04
  * 
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -57,6 +57,7 @@ typedef wchar_t TCHAR;
 #define _fgetts fgetws
 #define _fputts fputws
 #define _putts _putws
+#define _gettchar getwchar
 #define _tprintf wprintf
 #define _ftprintf fwprintf
 #define _sntprintf snwprintf
@@ -85,6 +86,7 @@ typedef char TCHAR;
 #define _fgetts fgets
 #define _fputts fputs
 #define _putts puts
+#define _gettchar getchar
 #define _tprintf printf
 #define _ftprintf fprintf
 #define _sntprintf snprintf

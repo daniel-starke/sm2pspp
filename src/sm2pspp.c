@@ -2,7 +2,7 @@
  * @file sm2pspp.c
  * @author Daniel Starke
  * @date 2021-01-30
- * @version 2023-05-01
+ * @version 2023-05-04
  *
  * DISCLAIMER
  * This file has no copyright assigned and is placed in the Public Domain.
@@ -34,13 +34,15 @@ const TCHAR * fmsg[MSG_COUNT] = {
 	/* MSGT_ERR_FILE_READ              */ _T("Error: Failed to read data from file.\n"),
 	/* MSGT_ERR_FILE_CREATE            */ _T("Error: Failed to create file for writing.\n"),
 	/* MSGT_ERR_FILE_WRITE             */ _T("Error: Failed to write data to file.\n"),
+	/* MSGT_ERR_NO_SET_NOZZLE_TEMP     */ _T("Error: No nozzle temperature set via M104 or M109.\n"),
 	/* MSGT_WARN_NO_FILAMENT_USED      */ _T("Warning: Filament used value not found.\n"),
 	/* MSGT_WARN_NO_LAYER_HEIGHT       */ _T("Warning: Layer height value not found.\n"),
 	/* MSGT_WARN_NO_EST_TIME           */ _T("Warning: Estimated time value not found.\n"),
 	/* MSGT_WARN_NO_NOZZLE_TEMP        */ _T("Warning: Nozzle temperature value not found.\n"),
 	/* MSGT_WARN_NO_PLATE_TEMP         */ _T("Warning: Building plate temperature value not found.\n"),
 	/* MSGT_WARN_NO_PRINT_SPEED        */ _T("Warning: Print speed value not found.\n"),
-	/* MSGT_WARN_NO_THUMBNAIL          */ _T("Warning: Thumbnail data not found.\n")
+	/* MSGT_WARN_NO_THUMBNAIL          */ _T("Warning: Thumbnail data not found.\n"),
+	/* MSGT_INFO_PRESS_ENTER           */ _T("Press ENTER to exit.\n")
 };
 
 
@@ -72,7 +74,19 @@ int _tmain(int argc, TCHAR ** argv) {
 		return EXIT_FAILURE;
 	}
 
-	return (processFile(argv[1], &errorCallback) == 1) ? EXIT_SUCCESS : EXIT_FAILURE;
+	/* get parameters */
+	TCHAR * file = argv[1];
+	int check = 0;
+	if (_tcscmp(file, _T("-c")) == 0 || _tcscmp(file, _T("--check")) == 0) {
+		if (argc < 3) {
+			printHelp();
+			return EXIT_FAILURE;
+		}
+		file = argv[2];
+		check = 1;
+	}
+
+	return (processFile(file, check, &errorCallback) == 1) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 
@@ -81,7 +95,10 @@ int _tmain(int argc, TCHAR ** argv) {
  */
 void printHelp(void) {
 	_ftprintf(ferr,
-	_T("sm2pspp <g-code file>\n")
+	_T("sm2pspp [-c] <g-code file>\n")
+	_T("\n")
+	_T("-c,--check\n")
+	_T("   Prompts an error if no M104 or M109 was found in the Gcode.\n")
 	_T("\n")
 	_T("sm2pspp ") _T2(PROGRAM_VERSION_STR) _T("\n")
 	_T("https://github.com/daniel-starke/sm2pspp\n")
@@ -218,10 +235,11 @@ endOfNumber:
  * it into a Snapmaker 2.0 terminal compatible G-Code file.
  *
  * @param[in] file - PrusaSlicer generated G-Code file
+ * @param[in] check - 1 to error on missing M104/M109, else 0
  * @param[in] cb - error output callback function
  * @return 1 on success, 0 on failure, -1 if aborted by callback function
  */
-int processFile(const TCHAR * file, const tCallback cb) {
+int processFile(const TCHAR * file, const int check, const tCallback cb) {
 #define ON_WARN(msg) do { \
 	if (cb(msg, file, lineNr) != 1) goto onError; \
 } while (0) \
@@ -244,6 +262,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	float paramY = NAN;
 	float paramZ = NAN;
 	float paramE = NAN;
+	float paramS = NAN;
 	float x = NAN;
 	float y = NAN;
 	float z = NAN;
@@ -253,6 +272,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 	float maxX = -INFINITY;
 	float maxY = -INFINITY;
 	float maxZ = -INFINITY;
+	float maxNozzleTemp = 0.0f;
 	size_t lineNr = 1;
 	char * inputBuf = NULL;
 	size_t inputLen = 0;
@@ -299,10 +319,12 @@ int processFile(const TCHAR * file, const tCallback cb) {
 #endif /* DEBUG */
 	enum tParam {
 		P_G,
+		P_M,
 		P_X,
 		P_Y,
 		P_Z,
 		P_E,
+		P_S,
 		P_UNKNOWN
 	} param = P_UNKNOWN;
 
@@ -353,13 +375,14 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				/* comment */
 				memset(&aToken, 0, sizeof(aToken));
 				state = ST_COMMENT;
-			} else if (ch == 'G') {
+			} else if (ch == 'G' || ch == 'M') {
 				/* Gcode */
-				param = P_G;
+				param = (ch == 'G') ? P_G : P_M;
 				paramX = NAN;
 				paramY = NAN;
 				paramZ = NAN;
 				paramE = NAN;
+				paramS = NAN;
 				aToken.start = it + 1;
 				aToken.length = 0;
 				state = ST_GCODE;
@@ -376,7 +399,7 @@ int processFile(const TCHAR * file, const tCallback cb) {
 			}
 			break;
 		case ST_GCODE:
-			if (isdigit(ch) != 0 || (param != P_G && (ch == '.' || (aToken.length == 0 && ch == '-')))) {
+			if (isdigit(ch) != 0 || (param != P_G && param != P_M && (ch == '.' || (aToken.length == 0 && ch == '-')))) {
 				/* number */
 				aToken.length++;
 			} else if (ch == 'X') {
@@ -395,11 +418,18 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				param = P_E;
 				aToken.start = it + 1;
 				aToken.length = 0;
+			} else if (ch == 'S') {
+				param = P_S;
+				aToken.start = it + 1;
+				aToken.length = 0;
 			} else {
 				/* end of token */
 				switch (param) {
 				case P_G:
 					code = GCODE('G', p_uint(&aToken));
+					break;
+				case P_M:
+					code = GCODE('M', p_uint(&aToken));
 					break;
 				case P_X:
 					paramX = p_float(&aToken);
@@ -413,7 +443,10 @@ int processFile(const TCHAR * file, const tCallback cb) {
 				case P_E:
 					paramE = p_float(&aToken);
 					break;
-				case P_UNKNOWN:
+				case P_S:
+					paramS = p_float(&aToken);
+					break;
+				default:
 					break;
 				}
 				param = P_UNKNOWN;
@@ -508,6 +541,11 @@ int processFile(const TCHAR * file, const tCallback cb) {
 					case GCODE('G', 91): /* relative positioning */
 						isAbsPos = 0;
 						break;
+					case GCODE('M', 104): /* heat nozzle */
+					case GCODE('M', 109): /* heat nozzle and wait */
+						if (IS_SET(paramS) && paramS > 0.0f) {
+							maxNozzleTemp = paramS;
+						}
 					default:
 						break;
 					}
@@ -673,6 +711,9 @@ int processFile(const TCHAR * file, const tCallback cb) {
 		minZ -= p_float(&firstLayerHeight);
 	}
 
+	/* consistency checking */
+	if (check != 0 && maxNozzleTemp < 1.0f) ON_ERROR(MSGT_ERR_NO_SET_NOZZLE_TEMP);
+
 	/* check missing tokens */
 	if (filamentUsed.start == NULL || filamentUsed.length == 0) ON_WARN(MSGT_WARN_NO_FILAMENT_USED);
 	if (layerHeight.start == NULL || layerHeight.length == 0) ON_WARN(MSGT_WARN_NO_LAYER_HEIGHT);
@@ -759,6 +800,10 @@ onSuccess:
 onError:
 	if (fp != NULL) fclose(fp);
 	if (inputBuf != NULL) free(inputBuf);
+	if (res != 1) {
+		_ftprintf(ferr, _T("%s"), fmsg[MSGT_INFO_PRESS_ENTER]);
+		_gettchar();
+	}
 	return res;
 
 #undef ON_WARN

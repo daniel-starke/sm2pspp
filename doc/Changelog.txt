@@ -4,6 +4,10 @@ M.N.P
 | +---- minor: increased if command-line syntax/semantic breaking changes were applied
 +------ major: increased if elementary changes (from user's point of view) were made
 
+1.4.0 (2023-05-04)
+ - added: option -c/--check to exit with error if no M104/M109 with S > 0 was found (i.e. no nozzle temperature set)
+ - added: prompt for ENTER on error
+
 1.3.0 (2023-05-01)
  - added: dual extruder support (automatically detected from Gcode)
  - added: version string to Gcode output

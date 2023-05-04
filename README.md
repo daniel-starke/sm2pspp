@@ -6,7 +6,8 @@ A **S**nap**m**aker **2**.0 **P**rusa**S**licer **P**ost-**P**rocessor to create
 Features
 ========
 
-This application can be added to PrusaSlicer as post-processing script which takes the generated G-Code and converts it in-place into a Snapmaker terminal compatible file by modifying the G-Code comment sections.
+This application can be added to PrusaSlicer as post-processing script which takes the generated G-Code and converts it in-place
+into a Snapmaker terminal compatible file by modifying the G-Code comment sections.
 
 Usage
 =====
@@ -17,6 +18,9 @@ Usage
 * Add post-processing script in PrusaSlicer `Print Settings/Output options/Post-processing script:` *absolute path to sm2pspp*.
   ![Post-processing Script](doc/postProcessor.png)
 
+_**Hint:** Add the parameter `--check` after the path to sm2pspp to exit with an error if no nozzle temperature was set.
+This can be useful to prevent the output of Gcode files with invalid settings._
+
 Building
 ========
 
@@ -25,7 +29,7 @@ The following dependencies are given:
 
 Edit Makefile to match your target system configuration.
 
-_Hint: You may want to link with `-mwindows` for Windows targets to suppress the console window to be shown._
+_**Hint:** You may want to link with `-mwindows` for Windows targets to suppress the console window to be shown._
 
 Building the program:  
 
